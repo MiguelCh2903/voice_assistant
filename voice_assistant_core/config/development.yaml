@@ -1,0 +1,89 @@
+# ROS2 Voice Assistant Core - Development Configuration
+# This configuration is optimized for development and testing environments
+# 
+# Environment Variables (loaded from ~/.env):
+#   - ESPHOME_HOST: ESPHome device IP address
+#   - ESPHOME_PORT: ESPHome API port
+#   - ESPHOME_PASSWORD: ESPHome API password
+#   - ESPHOME_ENCRYPTION_KEY: ESPHome encryption key
+#   - PICOVOICE_ACCESS_KEY: Picovoice API key for VAD
+#
+voice_assistant_core:
+  ros__parameters:
+    # ESPHome device connection settings (use environment variables)
+    device:
+      host: "$(env ESPHOME_HOST 192.168.1.71)"              # ESPHome device IP address
+      port: $(env ESPHOME_PORT 6053)                         # ESPHome native API port
+      password: "$(env ESPHOME_PASSWORD)"                    # ESPHome API password (if required)
+      encryption_key: "$(env ESPHOME_ENCRYPTION_KEY)"        # ESPHome encryption key (from .env)
+      name: "Dev Voice Assistant"                            # Human-readable device name
+      
+    # Connection management and reliability
+    connection:
+      timeout: 15.0                                         # Connection timeout in seconds
+      heartbeat_interval: 30.0                             # Heartbeat interval for connection health
+      auto_reconnect: true                                 # Enable automatic reconnection
+      max_reconnect_attempts: 0                           # 0 = infinite reconnection attempts
+      reconnect_delay_base: 1.0                           # Base delay between reconnection attempts
+      reconnect_delay_max: 60.0                           # Maximum delay between attempts
+      
+    # Audio processing configuration
+    audio:
+      sample_rate: 16000                                   # Audio sample rate (Hz) - standard for voice
+      sample_width: 16                                     # Bits per sample - 16-bit PCM
+      channels: 1                                          # Audio channels - mono for voice processing
+      max_duration: 30.0                                   # Maximum audio stream duration (seconds)
+      buffer_size: 1048576                                 # Audio buffer size (1MB) for ROS2 compatibility
+      chunk_size: 2048                                     # Audio chunk size for streaming (bytes)
+      log_level: "INFO"                                    # Audio buffer logging level (INFO/WARNING)
+      
+    # Voice Activity Detection (VAD) configuration
+    vad:
+      enabled: true                                        # Enable/disable VAD filtering
+      access_key: "$(env PICOVOICE_ACCESS_KEY)"           # Cobra VAD access key (from .env)
+      threshold: 0.6                                       # Voice probability threshold (0.0 - 1.0)
+      
+    # Turn Detection configuration - Two-phase intelligent detection
+    # Phase 1: Wait for consecutive speech burst to trigger turn start
+    # Phase 2: Analyze during silence with ML model + fallback timeout
+    turn_detector:
+      enabled: true                                        # Enable/disable turn detection
+      speech_start_consecutive_duration: 0.7               # Consecutive speech duration to trigger turn start (seconds)
+      silence_duration_before_analysis: 1.5                # Silence duration before ML analysis (seconds)
+      silence_fallback_timeout: 3.0                        # Max silence before forced turn end - fallback (seconds)
+      context_buffer_duration: 8.0                         # Max audio context buffer duration (seconds)
+      pre_buffer_duration: 0.2                             # Pre-buffer duration before speech detection (seconds)
+      ml_confidence_threshold: 0.82                        # ML model confidence threshold (0-1)
+      min_turn_cooldown: 2.5                               # Minimum time between turn completions (seconds)
+      enable_model_warmup: true                            # Run model warmup on initialization
+      log_level: "INFO"                                    # Turn detector logging level (INFO/WARNING)
+      
+    # ROS2 integration settings
+    ros2:
+      use_typed_messages: false                            # Enable voice_assistant_msgs (set true when available)
+      qos_audio_depth: 10                                  # QoS queue depth for audio topics
+      qos_state_depth: 1                                   # QoS queue depth for state topics  
+      qos_events_depth: 5                                  # QoS queue depth for event topics
+      publish_diagnostics: true                            # Enable diagnostic message publishing
+      
+    # State machine behavior
+    state_machine:
+      transition_timeout: 5.0                              # Maximum time for state transitions
+      error_recovery_delay: 2.0                            # Delay before error recovery attempts
+      max_error_recovery_attempts: 3                       # Maximum error recovery attempts
+      
+    # Development and debugging options
+    debug:
+      enable_logging: true                                 # Enable detailed logging output
+      save_audio: true                                     # Save audio chunks for debugging
+      log_state_transitions: true                          # Log all FSM state transitions
+      performance_metrics: true                            # Collect and log performance metrics
+      log_level: "DEBUG"                                   # Logging level (DEBUG, INFO, WARN, ERROR)
+      
+    # Performance tuning
+    performance:
+      processing_timeout_stt: 15.0                         # STT processing timeout (seconds)
+      processing_timeout_llm: 10.0                         # LLM processing timeout (seconds) 
+      processing_timeout_tts: 20.0                         # TTS processing timeout (seconds)
+      pipeline_total_timeout: 60.0                         # Total pipeline timeout (seconds)
+      latency_warning_threshold: 0.1                       # Warn if latency exceeds this (seconds)

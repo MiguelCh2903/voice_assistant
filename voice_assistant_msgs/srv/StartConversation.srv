@@ -1,0 +1,13 @@
+# Start conversation service
+# Manually trigger a conversation
+
+# Force start conversation
+bool force_start
+string conversation_id
+
+---
+
+# Start result
+bool success
+string message
+string assigned_conversation_id

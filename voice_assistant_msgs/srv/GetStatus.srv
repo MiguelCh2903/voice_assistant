@@ -1,0 +1,29 @@
+# Get voice assistant status service
+# Returns current status and health information
+
+---
+
+# Connection status
+bool is_connected
+string device_name
+string device_host
+
+# Current state
+string current_state
+float32 uptime
+
+# Voice assistant subscription status
+bool subscription_active
+uint32 voice_features
+
+# Audio stream statistics
+uint32 active_streams
+uint64 total_audio_bytes
+uint32 total_conversations
+
+# Error information
+bool has_errors
+string[] error_messages
+
+# Device capabilities
+string[] supported_features

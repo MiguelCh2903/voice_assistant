@@ -1,0 +1,98 @@
+# ROS2 Voice Assistant Core - Production Configuration  
+# Optimized configuration for stable production deployment with enhanced reliability
+#
+# Environment Variables (loaded from ~/.env):
+#   - ESPHOME_HOST: ESPHome device IP address
+#   - ESPHOME_PORT: ESPHome API port
+#   - ESPHOME_PASSWORD: ESPHome API password
+#   - ESPHOME_ENCRYPTION_KEY: ESPHome encryption key
+#   - PICOVOICE_ACCESS_KEY: Picovoice API key for VAD
+#   - DEEPGRAM_API_KEY: Deepgram API key (future use)
+#
+voice_assistant_core:
+  ros__parameters:
+    # ESPHome device connection (production environment)
+    device:
+      host: "$(env ESPHOME_HOST 192.168.1.71)"
+      port: $(env ESPHOME_PORT 6053)
+      password: "$(env ESPHOME_PASSWORD)"
+      encryption_key: "$(env ESPHOME_ENCRYPTION_KEY)"
+      name: "Voice Assistant Production"
+      
+    # Enhanced connection reliability for production
+    connection:
+      timeout: 20.0
+      heartbeat_interval: 60.0
+      auto_reconnect: true
+      max_reconnect_attempts: 0
+      reconnect_delay_base: 5.0
+      reconnect_delay_max: 300.0
+      keepalive_interval: 30.0
+      
+    # Production-grade audio processing
+    audio:
+      sample_rate: 16000
+      sample_width: 16
+      channels: 1
+      max_duration: 30.0
+      buffer_size: 2097152
+      chunk_size: 2048                                     # Audio chunk size for streaming (bytes)
+      log_level: "WARNING"                                 # Audio buffer logging level (INFO/WARNING)
+      
+    # Voice Activity Detection (VAD) configuration
+    vad:
+      enabled: true
+      access_key: "$(env PICOVOICE_ACCESS_KEY)"
+      threshold: 0.5                                       # Voice probability threshold (0.0 - 1.0)
+      
+    # Turn Detection configuration - Two-phase intelligent detection
+    # Optimized for production: faster response with maintained accuracy
+    turn_detector:
+      enabled: true                                        # Enable/disable turn detection
+      speech_start_consecutive_duration: 0.6               # Consecutive speech duration to trigger turn start (seconds)
+      silence_duration_before_analysis: 1.2                # Silence duration before ML analysis (seconds)
+      silence_fallback_timeout: 3.0                        # Max silence before forced turn end - fallback (seconds)
+      context_buffer_duration: 8.0                         # Max audio context buffer duration (seconds)
+      pre_buffer_duration: 0.2                             # Pre-buffer duration before speech detection (seconds)
+      ml_confidence_threshold: 0.78                        # ML model confidence threshold (0-1)
+      min_turn_cooldown: 2.5                               # Minimum time between turn completions (seconds)
+      enable_model_warmup: true                            # Run model warmup on initialization
+      log_level: "WARNING"                                 # Turn detector logging level (INFO/WARNING)
+      
+    # Production ROS2 configuration
+    ros2:
+      use_typed_messages: true
+      qos_audio_depth: 15
+      qos_state_depth: 2
+      qos_events_depth: 10
+      publish_diagnostics: true
+      node_name: "voice_assistant_core"
+      
+    # Robust state machine configuration
+    state_machine:
+      transition_timeout: 10.0
+      error_recovery_delay: 5.0
+      max_error_recovery_attempts: 5
+      
+    # Production logging and monitoring
+    debug:
+      enable_logging: false
+      save_audio: false
+      log_state_transitions: true
+      performance_metrics: true
+      log_level: "INFO"
+      
+    # Performance optimization for production
+    performance:
+      processing_timeout_stt: 20.0
+      processing_timeout_llm: 15.0
+      processing_timeout_tts: 25.0
+      pipeline_total_timeout: 90.0
+      latency_warning_threshold: 0.2
+      
+    # Production health monitoring
+    monitoring:
+      enable_health_checks: true
+      health_check_interval: 30.0
+      memory_usage_threshold: 0.8
+      cpu_usage_threshold: 0.7

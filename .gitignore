@@ -1,0 +1,117 @@
+# .gitignore for voice assistant mono-repo (ROS2 + Python)
+# Ignore common Python, ROS2/colcon, and editor artifacts
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv*/
+
+# Packaging and distribution
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+*.whl
+
+# Test / coverage
+.pytest_cache/
+.pytest_cache
+.coverage
+.coverage.*
+htmlcov/
+
+# Typing & lint caches
+.mypy_cache/
+.pyre/
+.pylint.d/
+
+# ROS2 (colcon) build artifacts
+build/
+install/
+log/
+_colcon_* 
+
+# ROS message generation artifacts (if present)
+*_build/
+*_install/
+*_log/
+
+# Local environment files and secrets
+.env
+.env.*
+config/*.local.yaml
+secrets.yaml
+secret_*.yaml
+credentials.json
+*.pem
+*.key
+
+# Logs & runtime data
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+
+# Editor directories
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# IDE / JetBrains
+*.iml
+*.iws
+*.ipr
+
+# MacOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Node (if present)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Jupyter checkpoints
+.ipynb_checkpoints
+
+# Compiled objects and libraries
+*.o
+*.so
+*.a
+*.dylib
+*.dll
+
+# Misc
+*.orig
+.tags
+.project
+.settings/
+
+# Ignore any local sensitivity/credential files across packages
+**/*credentials*.json
+**/*.secret
+
+# Keep README and top-level packaging files under version control
+!README.md
+!LICENSE
+!package.xml
+!CMakeLists.txt
