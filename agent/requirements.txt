@@ -1,0 +1,16 @@
+# LangChain Agent Requirements
+# Install with: pip install -r requirements.txt
+
+# LangChain Core
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-groq>=0.2.0
+langchain-core>=0.3.0
+
+# LLM Provider APIs
+openai>=1.0.0
+groq>=0.11.0
+
+# Optional: LangSmith for tracing and debugging
+# Uncomment if you want to use LangSmith
+# langsmith>=0.1.0

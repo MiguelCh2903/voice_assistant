@@ -31,21 +31,27 @@ AUDIO_QUEUE_MAX_SIZE = 50  # Deque size for circular buffer
 VAD_FRAME_LENGTH = 512  # Cobra VAD requires 512 samples per frame
 VAD_THRESHOLD = 0.6  # Voice probability threshold (0.0 - 1.0)
 
-# Turn Detection Settings - Two-phase intelligent detection
+# Turn Detection Settings - Two-phase intelligent detection - OPTIMIZED FOR LOW LATENCY
 # Phase 1: Wait for consecutive speech burst to trigger turn start
 # Phase 2: Analyze during silence with ML model + fallback timeout
 TURN_DETECTOR_ENABLED = True
 TURN_DETECTOR_SPEECH_START_DURATION = (
-    0.7  # Consecutive speech to trigger turn start (seconds)
+    0.6  # Consecutive speech to trigger turn start (seconds) - REDUCED from 0.7
 )
-TURN_DETECTOR_SILENCE_ANALYSIS_DURATION = 1.5  # Silence before ML analysis (seconds)
+TURN_DETECTOR_SILENCE_ANALYSIS_DURATION = (
+    1.0  # Silence before ML analysis (seconds) - REDUCED from 1.5
+)
 TURN_DETECTOR_SILENCE_FALLBACK_TIMEOUT = (
-    3.0  # Max silence before forced turn end (seconds)
+    2.0  # Max silence before forced turn end (seconds) - REDUCED from 3.0
 )
 TURN_DETECTOR_CONTEXT_BUFFER_DURATION = 8.0  # Audio context buffer duration (seconds)
 TURN_DETECTOR_PRE_BUFFER_DURATION = 0.2  # Pre-buffer before speech detection (seconds)
-TURN_DETECTOR_CONFIDENCE_THRESHOLD = 0.82  # ML confidence threshold (0-1)
-TURN_DETECTOR_MIN_TURN_COOLDOWN = 2.5  # Minimum time between turn completions (seconds)
+TURN_DETECTOR_CONFIDENCE_THRESHOLD = (
+    0.78  # ML confidence threshold (0-1) - REDUCED from 0.82 for faster detection
+)
+TURN_DETECTOR_MIN_TURN_COOLDOWN = (
+    2.0  # Minimum time between turn completions (seconds) - REDUCED from 2.5
+)
 TURN_DETECTOR_ENABLE_WARMUP = True  # Run model warmup on initialization
 TURN_DETECTOR_LOG_LEVEL = "INFO"  # Logging level (INFO/WARNING)
 

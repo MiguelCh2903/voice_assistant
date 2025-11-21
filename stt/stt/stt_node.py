@@ -311,18 +311,20 @@ class STTNode(Node):
                 turn_complete = data.get("turn_complete", False)
                 stream_continues = data.get("stream_continues", False)
 
-                if turn_complete:
-                    if stream_continues:
-                        # Boundary detected; allow further speech before concluding
-                        # Defer transcription finalization until the stream truly ends
-                        self._logger.info(
-                            "Turn boundary detected (stream continues) - "
-                            "buffering for potential user continuation"
-                        )
-                    else:
-                        # Stream has conclusively ended; finalize transcription
-                        self._logger.info("Stream ended - finalizing transcription")
-                        await self._finalize_transcription()
+                if turn_complete and not stream_continues:
+                    # Stream has conclusively ended; finalize and close connection IMMEDIATELY
+                    self._logger.info(
+                        "Stream ended definitively - immediate finalization for low latency"
+                    )
+                    self._is_turn_complete = True
+                    # OPTIMIZATION: Finalize immediately without waiting
+                    await self._finalize_transcription()
+                elif turn_complete and stream_continues:
+                    # Boundary detected; allow further speech before concluding
+                    self._logger.info(
+                        "Turn boundary detected (stream continues) - "
+                        "buffering for potential user continuation"
+                    )
 
         except json.JSONDecodeError as e:
             self._logger.error(f"Invalid voice event JSON: {e}")
@@ -443,9 +445,14 @@ class STTNode(Node):
                     is_final = getattr(message, "is_final", False)
 
                     if is_final:
-                        # Final transcript
+                        # Final transcript segment - publish immediately
                         self._partial_transcripts.append(transcript)
                         self._logger.info(f"Final transcript segment: {transcript}")
+
+                        # Publish incremental transcription for low latency
+                        self._publish_incremental_transcription(
+                            transcript, is_complete=False
+                        )
                     else:
                         # Interim transcript
                         self._logger.debug(f"Interim transcript: {transcript}")
@@ -461,25 +468,59 @@ class STTNode(Node):
         """Handle Deepgram WebSocket error event."""
         self._logger.error(f"Deepgram WebSocket error: {error}")
 
+    def _publish_incremental_transcription(
+        self, transcript_segment: str, is_complete: bool
+    ) -> None:
+        """Publish incremental transcription for low latency processing."""
+        try:
+            # Combine all accumulated transcripts including current segment
+            complete_transcript = " ".join(self._partial_transcripts).strip()
+
+            if not complete_transcript:
+                return
+
+            # Create incremental result
+            result_data = {
+                "text": complete_transcript,
+                "confidence": 0.9,
+                "language": self.get_parameter("deepgram.language").value,
+                "processing_time": time.time() - self._transcription_start_time,
+                "is_final": is_complete,  # False for incremental, True for final
+                "audio_metadata": {
+                    "sample_rate": self.get_parameter("audio.sample_rate").value,
+                    "channels": 1,
+                    "encoding": "linear16",
+                },
+            }
+
+            # Publish incremental result
+            result_msg = String()
+            result_msg.data = json.dumps(result_data)
+            self._transcription_pub.publish(result_msg)
+
+            self._logger.info(
+                f"Published {'final' if is_complete else 'incremental'} transcription: "
+                f"'{complete_transcript[:50]}...' (length: {len(complete_transcript)})"
+            )
+
+        except Exception as e:
+            self._logger.error(f"Error publishing incremental transcription: {e}")
+
     async def _finalize_transcription(self) -> None:
         """Finalize and publish the transcription result."""
         try:
-            self._logger.info("Finalizing transcription")
+            self._logger.info("Finalizing transcription - closing socket immediately")
 
-            # Maintain streaming state so the session stays ready for upcoming audio
-            # self._is_streaming = False
-
-            # Preserve the WebSocket connection for reuse in the next turn
-            if self._websocket_connection:
+            # OPTIMIZATION: Close WebSocket immediately for low latency
+            if self._connection_task and not self._connection_task.done():
                 try:
-                    # Continuous Deepgram streaming does not require an explicit finish signal
-                    # Keep-alive traffic ensures the socket remains open for future audio
-                    # await self._websocket_connection.finish()
-                    self._logger.info(
-                        "WebSocket connection kept alive for continuous streaming"
-                    )
+                    self._connection_task.cancel()
+                    try:
+                        await self._connection_task
+                    except asyncio.CancelledError:
+                        self._logger.info("WebSocket closed immediately after turn end")
                 except Exception as e:
-                    self._logger.warning(f"Error in WebSocket handling: {e}")
+                    self._logger.warning(f"Error closing socket: {e}")
 
             # Combine all partial transcripts
             complete_transcript = " ".join(self._partial_transcripts).strip()
@@ -488,28 +529,9 @@ class STTNode(Node):
                 # Calculate processing time
                 processing_time = time.time() - self._transcription_start_time
 
-                # Create transcription result message
-                result_data = {
-                    "text": complete_transcript,
-                    "confidence": 0.9,  # Deepgram doesn't provide confidence in Nova model
-                    "language": self.get_parameter("deepgram.language").value,
-                    "processing_time": processing_time,
-                    "audio_metadata": {
-                        "sample_rate": self.get_parameter("audio.sample_rate").value,
-                        "channels": 1,
-                        "encoding": "linear16",
-                        "duration_seconds": processing_time,
-                    },
-                }
-
-                # Publish transcription result
-                result_msg = String()
-                result_msg.data = json.dumps(result_data)
-                self._transcription_pub.publish(result_msg)
-
-                self._logger.info(
-                    f"Published complete transcription: '{complete_transcript}' "
-                    f"(processing time: {processing_time:.2f}s)"
+                # OPTIMIZATION: Publish final transcription immediately
+                self._publish_incremental_transcription(
+                    complete_transcript, is_complete=True
                 )
 
                 # Publish completion event
@@ -533,11 +555,13 @@ class STTNode(Node):
                     },
                 )
 
-            # Clear transcript buffers only; retain the audio buffer and socket
+            # Clear all buffers and reset streaming state for next turn
             self._partial_transcripts.clear()
             self._final_transcript = ""
-            # Reset the transcription timer for the next turn
-            self._transcription_start_time = time.time()
+            self._audio_buffer.clear()
+            self._is_streaming = False
+            self._websocket_connection = None
+            self._connection_task = None
 
         except Exception as e:
             self._logger.error(f"Error finalizing transcription: {e}")
@@ -565,6 +589,14 @@ class STTNode(Node):
 
         # Signal shutdown
         self._shutdown_event.set()
+
+        # Close WebSocket connection if active
+        if self._websocket_connection:
+            try:
+                await self._websocket_connection.finish()
+                self._logger.info("WebSocket connection closed during cleanup")
+            except Exception as e:
+                self._logger.warning(f"Error closing WebSocket during cleanup: {e}")
 
         # Stop streaming if active
         if self._is_streaming and self._connection_task:

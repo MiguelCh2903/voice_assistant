@@ -1040,12 +1040,25 @@ class VoiceAssistantNode(Node):
         """Handle transcription result."""
         try:
             data = fast_json_loads(msg.data)
-            # Only log if text is significant (>5 chars) to reduce noise
-            if len(data.get("text", "")) > 5:
-                self._logger.info(f"Transcription: {data.get('text', '')[:50]}...")
+            text = data.get("text", "")
+            is_final = data.get(
+                "is_final", True
+            )  # Default to True for backwards compatibility
 
-            # Transition to LLM processing state
-            if self._state_machine.current_state == AssistantState.TRANSCRIBING:
+            # Only log if text is significant (>5 chars) to reduce noise
+            if len(text) > 5:
+                status = "FINAL" if is_final else "INCREMENTAL"
+                self._logger.info(f"Transcription [{status}]: {text[:50]}...")
+
+            # OPTIMIZATION: Transition to LLM processing immediately on final transcription
+            # Don't wait for additional messages - process as soon as we have final text
+            if (
+                is_final
+                and self._state_machine.current_state == AssistantState.TRANSCRIBING
+            ):
+                self._logger.info(
+                    "Final transcription received - transitioning to LLM processing"
+                )
                 self._state_machine.transition_to(AssistantState.PROCESSING_LLM)
 
         except json.JSONDecodeError as e:
@@ -1331,28 +1344,32 @@ class VoiceAssistantNode(Node):
                 audio_data = audio_int16.tobytes()
 
                 if len(audio_data) > 0:
-                    # Publish audio for transcription
+                    # Log audio ready for transcription
                     self._publish_audio_for_transcription(audio_data)
 
-                    # Transition to transcribing
-                    if (
-                        self._state_machine.current_state
-                        == AssistantState.STREAMING_AUDIO
-                    ):
-                        self._state_machine.transition_to(AssistantState.TRANSCRIBING)
-
-                    # Publish turn complete event with telemetry
+                    # OPTIMIZATION: Publish single AUDIO_STREAM_END event immediately
+                    # with stream_continues=False to signal definitive stream end
                     stats = self._turn_detector.get_statistics()
                     self._publish_event(
                         VoiceEventType.AUDIO_STREAM_END,
                         {
                             "turn_complete": True,
+                            "stream_continues": False,  # Definitive stream end
+                            "audio_size": len(audio_data),
+                            "ready_for_transcription": True,
                             "probability": prob,
                             "inference_time_ms": inference_time,
                             "forced": forced,
                             "stats": stats,
                         },
                     )
+
+                    # Transition to transcribing immediately after event
+                    if (
+                        self._state_machine.current_state
+                        == AssistantState.STREAMING_AUDIO
+                    ):
+                        self._state_machine.transition_to(AssistantState.TRANSCRIBING)
 
             return False  # Stop streaming
 
@@ -1384,23 +1401,10 @@ class VoiceAssistantNode(Node):
             raise
 
     def _publish_audio_for_transcription(self, audio_data: bytes) -> None:
-        """Publish complete audio data for transcription."""
-        # This would typically be published to a different topic
-        # for the speech-to-text package to process
-        self._logger.info(
-            f"Publishing audio for transcription: {len(audio_data)} bytes"
-        )
-
-        # For now, just publish as an event
-        self._publish_event(
-            VoiceEventType.AUDIO_STREAM_END,
-            {
-                "audio_size": len(audio_data),
-                "ready_for_transcription": True,
-                "stream_continues": False,  # Este es el cierre real del stream
-                "turn_complete": True,
-            },
-        )
+        """Log audio ready for transcription - actual event published elsewhere."""
+        # OPTIMIZATION: Don't publish duplicate AUDIO_STREAM_END event here
+        # The event is already published in _handle_turn_complete() with full telemetry
+        self._logger.info(f"Audio ready for transcription: {len(audio_data)} bytes")
 
     async def async_cleanup(self) -> None:
         """Cleanup async resources."""

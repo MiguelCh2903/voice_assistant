@@ -49,7 +49,7 @@ voice_assistant_core:
     turn_detector:
       enabled: true                                        # Enable/disable turn detection
       speech_start_consecutive_duration: 0.7               # Consecutive speech duration to trigger turn start (seconds)
-      silence_duration_before_analysis: 1.5                # Silence duration before ML analysis (seconds)
+      silence_duration_before_analysis: 1.2                # Silence duration before ML analysis (seconds)
       silence_fallback_timeout: 3.0                        # Max silence before forced turn end - fallback (seconds)
       context_buffer_duration: 8.0                         # Max audio context buffer duration (seconds)
       pre_buffer_duration: 0.2                             # Pre-buffer duration before speech detection (seconds)
