@@ -1,20 +1,19 @@
 # TTS audio data for playback
-# Contains synthesized speech audio
+# Contains synthesized speech from ElevenLabs API
+# Optimized for direct playback on ESPHome devices
 
-# Audio data
+# PCM audio data as byte array (int16 samples)
 uint8[] audio_data
 
-# Audio format information
-string format
-uint32 sample_rate
-uint8 channels
-uint8 sample_width
+# Audio format information (must match ESPHome expectations)
+string format           # e.g., "pcm_s16le"
+uint32 sample_rate      # Samples per second (typically 16000 Hz)
+uint8 channels          # Number of audio channels (1=mono)
+uint8 sample_width      # Bits per sample (typically 16)
 
-# Text that was synthesized
-string source_text
+# Synthesis metadata
+string source_text      # Original text that was synthesized
+string engine           # TTS engine used (e.g., "elevenlabs")
 
-# TTS engine used
-string engine
-
-# Conversation context
+# Conversation context (for tracking and debugging)
 string conversation_id

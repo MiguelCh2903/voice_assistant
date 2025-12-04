@@ -19,7 +19,13 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import String
+from std_msgs.msg import String  # For event publishing
+
+# Import custom messages from voice_assistant_msgs
+from voice_assistant_msgs.msg import (
+    LLMResponse as LLMResponseMsg,
+    TTSAudio as TTSAudioMsg,
+)
 
 try:
     from elevenlabs import ElevenLabs
@@ -137,10 +143,10 @@ class TTSNode(Node):
             depth=5,
         )
 
-        # Publishers
+        # Publishers - using custom messages for optimal performance
         self._tts_audio_pub = self.create_publisher(
-            String,
-            "~/tts_audio",
+            TTSAudioMsg,
+            "/voice_assistant/tts_audio",
             audio_qos,
             callback_group=self._default_cb_group,
         )
@@ -160,9 +166,9 @@ class TTSNode(Node):
             depth=20,
         )
 
-        # Subscribe to LLM responses from agent
+        # Subscribe to LLM responses from agent - using custom message
         self._llm_response_sub = self.create_subscription(
-            String,
+            LLMResponseMsg,
             "/voice_assistant/llm_response",
             self._llm_response_callback,
             llm_response_qos,
@@ -258,19 +264,18 @@ class TTSNode(Node):
                 if self._playback_active:
                     self._logger.error(f"Error in playback worker: {e}", exc_info=True)
 
-    def _llm_response_callback(self, msg: String) -> None:
+    def _llm_response_callback(self, msg: LLMResponseMsg) -> None:
         """
         Handle incoming LLM response sentences.
 
         Args:
-            msg: String message containing JSON with LLM response data
+            msg: LLMResponse message containing AI response data
         """
         try:
-            # Parse the JSON message
-            data = json.loads(msg.data)
-            response_text = data.get("response_text", "")
-            conversation_id = data.get("conversation_id", "")
-            continue_conversation = data.get("continue_conversation", False)
+            # Extract data from custom message
+            response_text = msg.response_text
+            conversation_id = msg.conversation_id
+            continue_conversation = msg.continue_conversation
 
             if not response_text.strip():
                 self._logger.debug("Received empty response text, skipping synthesis")
@@ -284,8 +289,6 @@ class TTSNode(Node):
             # Synthesize the sentence immediately
             self._synthesize_and_publish(response_text, conversation_id)
 
-        except json.JSONDecodeError as e:
-            self._logger.error(f"Failed to parse LLM response JSON: {e}")
         except Exception as e:
             self._logger.error(f"Error in LLM response callback: {e}")
 
@@ -371,20 +374,17 @@ class TTSNode(Node):
             channels = self.get_parameter("audio.channels").value
             sample_width = self.get_parameter("audio.sample_width").value
 
-            # Create message with audio data as hex string
-            message_data = {
-                "audio_data": audio_data.hex(),
-                "format": "pcm_s16le",
-                "sample_rate": sample_rate,
-                "channels": channels,
-                "sample_width": sample_width,
-                "source_text": source_text,
-                "engine": "elevenlabs",
-                "conversation_id": conversation_id,
-            }
-
-            msg = String()
-            msg.data = json.dumps(message_data)
+            # Create custom TTS audio message
+            msg = TTSAudioMsg()
+            msg.audio_data = list(audio_data)  # Convert bytes to uint8 array
+            msg.format = "pcm_s16le"
+            msg.sample_rate = sample_rate
+            msg.channels = channels
+            msg.sample_width = sample_width
+            msg.source_text = source_text
+            msg.engine = "elevenlabs"
+            msg.conversation_id = conversation_id
+            
             self._tts_audio_pub.publish(msg)
 
             self._logger.debug(

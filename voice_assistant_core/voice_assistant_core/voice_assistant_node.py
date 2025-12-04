@@ -27,7 +27,16 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallb
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import String
+
+# Import custom messages from voice_assistant_msgs
+from voice_assistant_msgs.msg import (
+    AudioChunk as AudioChunkMsg,
+    AssistantState as AssistantStateMsg,
+    VoiceEvent as VoiceEventMsg,
+    TranscriptionResult as TranscriptionResultMsg,
+    LLMResponse as LLMResponseMsg,
+    TTSAudio as TTSAudioMsg,
+)
 
 from .audio import AudioBuffer, AudioBufferError, AudioChunk
 from .audio.types import (
@@ -63,7 +72,6 @@ from .constants import (
 )
 from .detection import TurnDetector
 from .state import VoiceAssistantStateMachine
-from .utils import create_event_message, create_state_message, fast_json_loads
 
 
 class VoiceAssistantNode(Node):
@@ -243,18 +251,18 @@ class VoiceAssistantNode(Node):
             depth=5,  # Reduced queue size
         )
 
-        # Publishers - use String messages for stability
+        # Publishers - use custom messages for optimal performance
         self._audio_chunk_pub = self.create_publisher(
-            String, TOPIC_AUDIO_CHUNK, audio_qos, callback_group=self._default_cb_group
+            AudioChunkMsg, TOPIC_AUDIO_CHUNK, audio_qos, callback_group=self._default_cb_group
         )
         self._state_pub = self.create_publisher(
-            String,
+            AssistantStateMsg,
             TOPIC_ASSISTANT_STATE,
             state_qos,
             callback_group=self._default_cb_group,
         )
         self._event_pub = self.create_publisher(
-            String, TOPIC_VOICE_EVENT, event_qos, callback_group=self._default_cb_group
+            VoiceEventMsg, TOPIC_VOICE_EVENT, event_qos, callback_group=self._default_cb_group
         )
 
         self._logger.info("Publishers created")
@@ -267,9 +275,9 @@ class VoiceAssistantNode(Node):
             depth=TOPIC_QUEUE_SIZE_EVENTS,
         )
 
-        # Subscribers
+        # Subscribers - use custom messages for optimal performance
         self._transcription_sub = self.create_subscription(
-            String,
+            TranscriptionResultMsg,
             TOPIC_TRANSCRIPTION_RESULT,
             self._transcription_callback,
             event_qos,
@@ -277,7 +285,7 @@ class VoiceAssistantNode(Node):
         )
 
         self._llm_response_sub = self.create_subscription(
-            String,
+            LLMResponseMsg,
             TOPIC_LLM_RESPONSE,
             self._llm_response_callback,
             event_qos,
@@ -285,7 +293,7 @@ class VoiceAssistantNode(Node):
         )
 
         self._tts_audio_sub = self.create_subscription(
-            String,
+            TTSAudioMsg,
             TOPIC_TTS_AUDIO,
             self._tts_audio_callback,
             event_qos,
@@ -1036,57 +1044,50 @@ class VoiceAssistantNode(Node):
                 self._state_machine.transition_to(AssistantState.DISCONNECTED)
 
     # ROS2 callbacks
-    def _transcription_callback(self, msg: String) -> None:
+    def _transcription_callback(self, msg: TranscriptionResultMsg) -> None:
         """Handle transcription result."""
         try:
-            data = fast_json_loads(msg.data)
-            text = data.get("text", "")
-            is_final = data.get(
-                "is_final", True
-            )  # Default to True for backwards compatibility
+            text = msg.text
+            confidence = msg.confidence
 
             # Only log if text is significant (>5 chars) to reduce noise
             if len(text) > 5:
-                status = "FINAL" if is_final else "INCREMENTAL"
-                self._logger.info(f"Transcription [{status}]: {text[:50]}...")
+                self._logger.info(f"Transcription [FINAL]: {text[:50]}... (conf: {confidence:.2f})")
 
             # OPTIMIZATION: Transition to LLM processing immediately on final transcription
             # Don't wait for additional messages - process as soon as we have final text
-            if (
-                is_final
-                and self._state_machine.current_state == AssistantState.TRANSCRIBING
-            ):
+            if self._state_machine.current_state == AssistantState.TRANSCRIBING:
                 self._logger.info(
                     "Final transcription received - transitioning to LLM processing"
                 )
                 self._state_machine.transition_to(AssistantState.PROCESSING_LLM)
 
-        except json.JSONDecodeError as e:
-            self._logger.error(f"Invalid transcription message: {e}")
+        except Exception as e:
+            self._logger.error(f"Error processing transcription message: {e}")
 
-    def _llm_response_callback(self, msg: String) -> None:
+    def _llm_response_callback(self, msg: LLMResponseMsg) -> None:
         """Handle LLM response."""
         try:
-            # Validate JSON without storing - just check if parseable
-            fast_json_loads(msg.data)
-            self._logger.info("LLM response received")
+            response_text = msg.response_text
+            confidence = msg.confidence
+            
+            self._logger.info(f"LLM response received (conf: {confidence:.2f}): {response_text[:50]}...")
 
             # Transition to TTS processing state
             if self._state_machine.current_state == AssistantState.PROCESSING_LLM:
                 self._state_machine.transition_to(AssistantState.GENERATING_SPEECH)
 
-        except json.JSONDecodeError as e:
-            self._logger.error(f"Invalid LLM response message: {e}")
+        except Exception as e:
+            self._logger.error(f"Error processing LLM response message: {e}")
 
-    def _tts_audio_callback(self, msg: String) -> None:
+    def _tts_audio_callback(self, msg: TTSAudioMsg) -> None:
         """Handle TTS audio for playback."""
         try:
-            data = fast_json_loads(msg.data)
-            self._logger.info("TTS audio received for playback")
+            audio_bytes = bytes(msg.audio_data)
+            self._logger.info(f"TTS audio received for playback: {len(audio_bytes)} bytes")
 
             # Send audio to ESPHome device
             if self._esphome_client and self._esphome_client.is_connected:
-                audio_bytes = bytes.fromhex(data.get("audio_data", ""))
                 asyncio.create_task(
                     self._esphome_client.send_voice_assistant_audio(audio_bytes)
                 )
@@ -1095,8 +1096,8 @@ class VoiceAssistantNode(Node):
             if self._state_machine.current_state == AssistantState.PLAYING_RESPONSE:
                 self._state_machine.transition_to(AssistantState.IDLE)
 
-        except (json.JSONDecodeError, ValueError) as e:
-            self._logger.error(f"Invalid TTS audio message: {e}")
+        except Exception as e:
+            self._logger.error(f"Error processing TTS audio message: {e}")
 
     def _state_timer_callback(self) -> None:
         """Periodic state publishing."""
@@ -1177,21 +1178,30 @@ class VoiceAssistantNode(Node):
         if not self._state_machine:
             return
 
-        state_msg = String()
-        # Use optimized state message creation
-        state_msg.data = create_state_message(
-            self._state_machine.current_state.name,
-            time.time(),
-            self._state_machine.time_in_current_state,
-            self._state_machine.error_count,
-        )
+        state_msg = AssistantStateMsg()
+        state_msg.current_state = self._state_machine.current_state.name
+        state_msg.previous_state = self._state_machine.previous_state.name if self._state_machine.previous_state else ""
+        state_msg.transition_time.sec = int(time.time())
+        state_msg.transition_time.nanosec = int((time.time() % 1) * 1e9)
+        
+        # Add state metadata as JSON
+        state_data = {
+            "time_in_state": self._state_machine.time_in_current_state,
+            "error_count": self._state_machine.error_count,
+        }
+        state_msg.state_data = json.dumps(state_data)
+        
         self._state_pub.publish(state_msg)
 
     def _publish_event(self, event_type: VoiceEventType, data: Dict[str, Any]) -> None:
         """Publish voice event."""
-        event_msg = String()
-        # Use optimized event message creation
-        event_msg.data = create_event_message(event_type.name, time.time(), data)
+        event_msg = VoiceEventMsg()
+        event_msg.event_type = event_type.name
+        event_msg.message = data.get("message", "")
+        event_msg.timestamp.sec = int(time.time())
+        event_msg.timestamp.nanosec = int((time.time() % 1) * 1e9)
+        event_msg.priority = data.get("priority", 0)  # 0=info, 1=warning, 2=error
+        event_msg.event_data = json.dumps(data)
         self._event_pub.publish(event_msg)
 
     async def _process_audio_with_vad(self, chunk: AudioChunk) -> bool:
@@ -1378,20 +1388,21 @@ class VoiceAssistantNode(Node):
             return True  # Continue on error
 
     def _publish_audio_chunk(self, chunk: AudioChunk) -> None:
-        """Publish audio chunk."""
+        """Publish audio chunk using optimized custom message."""
         try:
-            chunk_msg = String()
-            chunk_data = {
-                "data": chunk.data.hex(),  # Convert bytes to hex string
-                "timestamp": chunk.timestamp,
-                "sequence_id": chunk.sequence_id,
-                "format": chunk.format.name,
-                "sample_rate": chunk.sample_rate,
-                "channels": chunk.channels,
-                "sample_width": chunk.sample_width,
-                "is_final": chunk.is_final,
-            }
-            chunk_msg.data = json.dumps(chunk_data)
+            chunk_msg = AudioChunkMsg()
+            # Direct byte array assignment - no encoding needed!
+            chunk_msg.data = list(chunk.data)  # Convert bytes to list of uint8
+            chunk_msg.timestamp.sec = int(chunk.timestamp)
+            chunk_msg.timestamp.nanosec = int((chunk.timestamp % 1) * 1e9)
+            chunk_msg.sequence_id = chunk.sequence_id
+            chunk_msg.format = chunk.format.name
+            chunk_msg.sample_rate = chunk.sample_rate
+            chunk_msg.channels = chunk.channels
+            chunk_msg.sample_width = chunk.sample_width
+            chunk_msg.is_final = chunk.is_final
+            chunk_msg.stream_id = getattr(chunk, 'stream_id', 0)
+            
             self._audio_chunk_pub.publish(chunk_msg)
             self._logger.debug(
                 f"Audio chunk published to topic - seq: {chunk.sequence_id}"

@@ -19,7 +19,13 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallb
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import String
+
+# Import custom messages from voice_assistant_msgs
+from voice_assistant_msgs.msg import (
+    AudioChunk as AudioChunkMsg,
+    TranscriptionResult as TranscriptionResultMsg,
+    VoiceEvent as VoiceEventMsg,
+)
 
 try:
     from deepgram import AsyncDeepgramClient
@@ -149,16 +155,16 @@ class STTNode(Node):
             depth=5,
         )
 
-        # Publishers
+        # Publishers - using custom messages for optimal performance
         self._transcription_pub = self.create_publisher(
-            String,
-            "~/transcription_result",
+            TranscriptionResultMsg,
+            "/voice_assistant/transcription_result",
             transcription_qos,
             callback_group=self._default_cb_group,
         )
 
         self._event_pub = self.create_publisher(
-            String, "~/stt_event", event_qos, callback_group=self._default_cb_group
+            VoiceEventMsg, "~/stt_event", event_qos, callback_group=self._default_cb_group
         )
 
         self._logger.info("STT publishers created")
@@ -179,18 +185,18 @@ class STTNode(Node):
             depth=10,
         )
 
-        # Subscribe to audio chunks from voice assistant core
+        # Subscribe to audio chunks from voice assistant core - using custom message
         self._audio_chunk_sub = self.create_subscription(
-            String,
+            AudioChunkMsg,
             "/voice_assistant/voice_assistant_core/audio_chunk",
             self._audio_chunk_callback,
             audio_qos,
             callback_group=self._default_cb_group,
         )
 
-        # Subscribe to voice events to detect turn completion
+        # Subscribe to voice events to detect turn completion - using custom message
         self._voice_event_sub = self.create_subscription(
-            String,
+            VoiceEventMsg,
             "/voice_assistant/voice_assistant_core/voice_event",
             self._voice_event_callback,
             event_qos,
@@ -245,7 +251,7 @@ class STTNode(Node):
             raise
 
     # ROS2 Callbacks
-    def _audio_chunk_callback(self, msg: String) -> None:
+    def _audio_chunk_callback(self, msg: AudioChunkMsg) -> None:
         """Handle incoming audio chunks from voice assistant core."""
         try:
             self._logger.debug("Received audio chunk callback")
@@ -257,13 +263,12 @@ class STTNode(Node):
         except Exception as e:
             self._logger.error(f"Error in audio chunk callback: {e}")
 
-    async def _process_audio_chunk(self, msg: String) -> None:
+    async def _process_audio_chunk(self, msg: AudioChunkMsg) -> None:
         """Process incoming audio chunk asynchronously."""
         try:
-            # Parse audio chunk data
-            chunk_data = json.loads(msg.data)
-            audio_bytes = bytes.fromhex(chunk_data["data"])
-            timestamp = chunk_data["timestamp"]
+            # Extract audio data directly from custom message
+            audio_bytes = bytes(msg.data)
+            timestamp = msg.timestamp.sec + msg.timestamp.nanosec * 1e-9
 
             # Update last audio timestamp
             self._last_audio_timestamp = timestamp
@@ -280,12 +285,10 @@ class STTNode(Node):
 
             self._logger.info(f"Processed audio chunk: {len(audio_bytes)} bytes")
 
-        except json.JSONDecodeError as e:
-            self._logger.error(f"Invalid audio chunk JSON: {e}")
         except Exception as e:
             self._logger.error(f"Error processing audio chunk: {e}")
 
-    def _voice_event_callback(self, msg: String) -> None:
+    def _voice_event_callback(self, msg: VoiceEventMsg) -> None:
         """Handle voice events from voice assistant core."""
         try:
             if self._loop and not self._loop.is_closed():
@@ -295,12 +298,12 @@ class STTNode(Node):
         except Exception as e:
             self._logger.error(f"Error in voice event callback: {e}")
 
-    async def _process_voice_event(self, msg: String) -> None:
+    async def _process_voice_event(self, msg: VoiceEventMsg) -> None:
         """Process voice events asynchronously."""
         try:
-            event_data = json.loads(msg.data)
-            event_type = event_data.get("event_type", "")
-            data = event_data.get("data", {})
+            # Extract data from custom message
+            event_type = msg.event_type
+            data = json.loads(msg.event_data) if msg.event_data else {}
 
             if event_type == "AUDIO_STREAM_START":
                 self._logger.info("Received audio stream start event")
@@ -326,8 +329,6 @@ class STTNode(Node):
                         "buffering for potential user continuation"
                     )
 
-        except json.JSONDecodeError as e:
-            self._logger.error(f"Invalid voice event JSON: {e}")
         except Exception as e:
             self._logger.error(f"Error processing voice event: {e}")
 
@@ -402,24 +403,31 @@ class STTNode(Node):
         self, model: str, language: str, sample_rate: int
     ):
         """Setup Deepgram connection using async context manager."""
-        # Create connection using async with
-        async with self._deepgram_client.listen.v1.connect(
-            model=model,
-            language=language,
-            sample_rate=sample_rate,
-            encoding="linear16",
-        ) as connection:
-            # Store the connection reference
-            self._websocket_connection = connection
+        try:
+            # Create connection using async with
+            async with self._deepgram_client.listen.v1.connect(
+                model=model,
+                language=language,
+                sample_rate=sample_rate,
+                encoding="linear16",
+            ) as connection:
+                # Store the connection reference
+                self._websocket_connection = connection
 
-            # Set up event handlers
-            connection.on(EventType.OPEN, self._on_deepgram_open)
-            connection.on(EventType.MESSAGE, self._on_deepgram_message)
-            connection.on(EventType.CLOSE, self._on_deepgram_close)
-            connection.on(EventType.ERROR, self._on_deepgram_error)
+                # Set up event handlers
+                connection.on(EventType.OPEN, self._on_deepgram_open)
+                connection.on(EventType.MESSAGE, self._on_deepgram_message)
+                connection.on(EventType.CLOSE, self._on_deepgram_close)
+                connection.on(EventType.ERROR, self._on_deepgram_error)
 
-            # Start listening - this will run indefinitely until connection closes
-            await connection.start_listening()
+                # Start listening - this will run indefinitely until connection closes
+                await connection.start_listening()
+        except asyncio.CancelledError:
+            self._logger.info("Deepgram connection task cancelled")
+            # Don't propagate CancelledError - this is expected during finalization
+        except Exception as e:
+            self._logger.error(f"Error in Deepgram connection: {e}")
+            raise
 
     async def _send_audio_to_deepgram(self, audio_data: bytes) -> None:
         """Send audio data to Deepgram WebSocket."""
@@ -479,23 +487,28 @@ class STTNode(Node):
             if not complete_transcript:
                 return
 
-            # Create incremental result
-            result_data = {
-                "text": complete_transcript,
-                "confidence": 0.9,
-                "language": self.get_parameter("deepgram.language").value,
-                "processing_time": time.time() - self._transcription_start_time,
-                "is_final": is_complete,  # False for incremental, True for final
-                "audio_metadata": {
-                    "sample_rate": self.get_parameter("audio.sample_rate").value,
-                    "channels": 1,
-                    "encoding": "linear16",
-                },
-            }
-
-            # Publish incremental result
-            result_msg = String()
-            result_msg.data = json.dumps(result_data)
+            # Create custom transcription result message
+            result_msg = TranscriptionResultMsg()
+            result_msg.text = complete_transcript
+            result_msg.confidence = 0.9
+            result_msg.language = self.get_parameter("deepgram.language").value
+            result_msg.processing_time = time.time() - self._transcription_start_time
+            
+            # Add audio metadata
+            result_msg.audio_metadata.stream_id = 0
+            result_msg.audio_metadata.format = "linear16"
+            result_msg.audio_metadata.sample_rate = self.get_parameter("audio.sample_rate").value
+            result_msg.audio_metadata.channels = 1
+            result_msg.audio_metadata.sample_width = 16
+            result_msg.audio_metadata.total_chunks = len(self._audio_buffer)
+            result_msg.audio_metadata.total_bytes = sum(len(chunk) for chunk in self._audio_buffer)
+            result_msg.audio_metadata.duration = result_msg.processing_time
+            result_msg.audio_metadata.start_time.sec = int(self._transcription_start_time)
+            result_msg.audio_metadata.start_time.nanosec = int((self._transcription_start_time % 1) * 1e9)
+            result_msg.audio_metadata.end_time.sec = int(time.time())
+            result_msg.audio_metadata.end_time.nanosec = int((time.time() % 1) * 1e9)
+            
+            # Publish using custom message
             self._transcription_pub.publish(result_msg)
 
             self._logger.info(
@@ -512,15 +525,25 @@ class STTNode(Node):
             self._logger.info("Finalizing transcription - closing socket immediately")
 
             # OPTIMIZATION: Close WebSocket immediately for low latency
+            # First, call finalize() to tell Deepgram to process remaining audio and close
+            if self._websocket_connection:
+                try:
+                    self._logger.info("Calling Deepgram finalize() to close connection immediately")
+                    await self._websocket_connection.finish()
+                    self._logger.info("Deepgram connection finalized successfully")
+                except Exception as e:
+                    self._logger.warning(f"Error finalizing Deepgram connection: {e}")
+            
+            # Then cancel the connection task
             if self._connection_task and not self._connection_task.done():
                 try:
                     self._connection_task.cancel()
                     try:
                         await self._connection_task
                     except asyncio.CancelledError:
-                        self._logger.info("WebSocket closed immediately after turn end")
+                        self._logger.info("WebSocket task cancelled after finalize")
                 except Exception as e:
-                    self._logger.warning(f"Error closing socket: {e}")
+                    self._logger.warning(f"Error canceling connection task: {e}")
 
             # Combine all partial transcripts
             complete_transcript = " ".join(self._partial_transcripts).strip()
@@ -569,14 +592,16 @@ class STTNode(Node):
     def _publish_event(self, event_type: str, data: Dict[str, Any]) -> None:
         """Publish STT event."""
         try:
-            event_data = {
-                "event_type": event_type,
-                "timestamp": time.time(),
-                "data": data,
-            }
-
-            event_msg = String()
-            event_msg.data = json.dumps(event_data)
+            # Create custom voice event message
+            event_msg = VoiceEventMsg()
+            event_msg.event_type = event_type
+            event_msg.message = data.get("message", "")
+            current_time = time.time()
+            event_msg.timestamp.sec = int(current_time)
+            event_msg.timestamp.nanosec = int((current_time % 1) * 1e9)
+            event_msg.priority = data.get("priority", 0)
+            event_msg.event_data = json.dumps(data)
+            
             self._event_pub.publish(event_msg)
 
         except Exception as e:

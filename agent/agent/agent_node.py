@@ -25,7 +25,12 @@ from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import String
+
+# Import custom messages from voice_assistant_msgs
+from voice_assistant_msgs.msg import (
+    LLMResponse as LLMResponseMsg,
+    TranscriptionResult as TranscriptionResultMsg,
+)
 
 
 class AgentNode(Node):
@@ -222,9 +227,9 @@ class AgentNode(Node):
             depth=5,
         )
 
-        # Publisher for LLM responses
+        # Publisher for LLM responses - using custom message
         self._llm_response_pub = self.create_publisher(
-            String,
+            LLMResponseMsg,
             "/voice_assistant/llm_response",
             event_qos,
         )
@@ -240,9 +245,9 @@ class AgentNode(Node):
             depth=5,
         )
 
-        # Subscriber for transcription results
+        # Subscriber for transcription results - using custom message
         self._transcription_sub = self.create_subscription(
-            String,
+            TranscriptionResultMsg,
             "/voice_assistant/transcription_result",
             self._transcription_callback,
             event_qos,
@@ -250,21 +255,22 @@ class AgentNode(Node):
 
         self._logger.info("Subscribers created")
 
-    def _transcription_callback(self, msg: String) -> None:
+    def _transcription_callback(self, msg: TranscriptionResultMsg) -> None:
         """
         Handle incoming transcription from STT.
 
         Args:
-            msg: String message containing JSON-encoded transcription
+            msg: TranscriptionResult message containing transcription data
         """
         try:
-            # Parse transcription JSON
-            data = json.loads(msg.data)
-            user_text = data.get("text", "")
-            confidence = data.get("confidence", 0.0)
-            is_final = data.get(
-                "is_final", True
-            )  # Default to True for backwards compatibility
+            # Extract data from custom message
+            user_text = msg.text
+            confidence = msg.confidence
+            language = msg.language
+            
+            # Check if this is a final transcription by looking at processing time
+            # (incremental results typically have lower processing times)
+            is_final = msg.processing_time > 0.5  # Heuristic: final transcriptions take longer
 
             # OPTIMIZATION: Only process final transcriptions to avoid processing intermediate results
             if not is_final:
@@ -284,8 +290,6 @@ class AgentNode(Node):
             # Process with LLM immediately
             self._process_user_input(user_text)
 
-        except json.JSONDecodeError as e:
-            self._logger.error(f"Invalid transcription JSON: {e}")
         except Exception as e:
             self._logger.error(f"Error processing transcription: {e}")
 
@@ -421,18 +425,16 @@ class AgentNode(Node):
         default_intent = self.get_parameter("response.default_intent").value
         default_confidence = self.get_parameter("response.default_confidence").value
 
-        response_data = {
-            "response_text": sentence,
-            "intent": default_intent,
-            "confidence": default_confidence,
-            "continue_conversation": continue_conversation,
-            "conversation_id": self._conversation_id,
-            "entities": [],
-            "keywords": [],
-        }
-
-        msg = String()
-        msg.data = json.dumps(response_data)
+        # Create custom LLM response message
+        msg = LLMResponseMsg()
+        msg.response_text = sentence
+        msg.intent = default_intent
+        msg.confidence = default_confidence
+        msg.continue_conversation = continue_conversation
+        msg.conversation_id = self._conversation_id
+        msg.entities = []  # Empty list for now
+        msg.keywords = []  # Empty list for now
+        
         self._llm_response_pub.publish(msg)
 
         continue_marker = "..." if continue_conversation else "✓"
@@ -445,20 +447,20 @@ class AgentNode(Node):
         Args:
             error_message: Error description
         """
-        response_data = {
-            "response_text": "Lo siento, hubo un error al procesar tu solicitud.",
-            "intent": "error",
-            "confidence": 0.0,
-            "continue_conversation": False,
-            "conversation_id": self._conversation_id,
-            "entities": [],
-            "keywords": [],
-            "error_message": error_message,
-        }
-
-        msg = String()
-        msg.data = json.dumps(response_data)
+        # Create custom LLM response message for error
+        msg = LLMResponseMsg()
+        msg.response_text = "Lo siento, hubo un error al procesar tu solicitud."
+        msg.intent = "error"
+        msg.confidence = 0.0
+        msg.continue_conversation = False
+        msg.conversation_id = self._conversation_id
+        msg.entities = []
+        msg.keywords = []
+        
         self._llm_response_pub.publish(msg)
+        
+        # Log error details
+        self._logger.error(f"Error response published: {error_message}")
 
     def _add_to_history(self, message: HumanMessage | AIMessage) -> None:
         """

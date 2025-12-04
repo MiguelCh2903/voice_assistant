@@ -1,21 +1,24 @@
 # LLM processing response
-# Contains AI-generated response and conversation context
+# Contains AI-generated response from LangChain/OpenAI GPT-4o-mini
+# Supports streaming responses with sentence-level chunking
 
-# AI response text
+# AI-generated response text (may be sentence chunk or full response)
 string response_text
 
-# Detected intent
+# Detected user intent (e.g., "chat", "command", "question")
 string intent
 
-# Response confidence (0.0 to 1.0)
+# Response confidence from LLM (0.0 = uncertain, 1.0 = confident)
 float32 confidence
 
-# Whether to continue conversation
+# Whether conversation should continue (true for streaming chunks)
 bool continue_conversation
 
-# Conversation ID for context
+# Conversation ID for context tracking across turns
 string conversation_id
 
-# Additional metadata
+# Extracted entities from conversation (e.g., names, dates, locations)
 string[] entities
+
+# Key concepts or topics from response
 string[] keywords

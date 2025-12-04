@@ -1,17 +1,23 @@
 # Voice assistant system event
-# Contains event notifications and system messages
+# Contains event notifications for monitoring and debugging
+# Used for logging, telemetry, and inter-node communication
 
-# Event type
+# Priority level constants
+uint8 PRIORITY_INFO = 0
+uint8 PRIORITY_WARNING = 1
+uint8 PRIORITY_ERROR = 2
+
+# Event type identifier (e.g., "AUDIO_STREAM_START", "ERROR_OCCURRED")
 string event_type
 
-# Event message
+# Human-readable event message
 string message
 
-# Event timestamp
+# Timestamp when event occurred
 builtin_interfaces/Time timestamp
 
-# Event priority (0=info, 1=warning, 2=error)
+# Event priority level (use constants above)
 uint8 priority
 
-# Additional event data as JSON
+# Additional event data as JSON (for detailed diagnostics)
 string event_data
