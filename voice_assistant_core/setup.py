@@ -23,7 +23,7 @@ setup(
         "setuptools",
         "aioesphomeapi>=20.0.0",
         "numpy>=1.21.0",
-        "pvcobra",
+        "vapi_python>=0.1.9",
     ],
     zip_safe=True,
     maintainer="astra",
@@ -39,6 +39,7 @@ setup(
     entry_points={
         "console_scripts": [
             "voice_assistant_core = voice_assistant_core.voice_assistant_node:main",
+            "vapi_voice_assistant = voice_assistant_core.vapi_voice_assistant_node:main",
         ],
     },
 )
