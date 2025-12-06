@@ -132,7 +132,7 @@ class VapiVoiceAssistantNode(Node):
         try:
             self._loop.run_until_complete(self._async_main())
         except Exception as e:
-            self.get_logger().error(f"Async loop error: {e}", exc_info=True)
+            self.get_logger().error(f"Async loop error: {e}")
         finally:
             self._loop.close()
 
@@ -146,7 +146,7 @@ class VapiVoiceAssistantNode(Node):
             await self._shutdown_event.wait()
 
         except Exception as e:
-            self.get_logger().error(f"Error in async main: {e}", exc_info=True)
+            self.get_logger().error(f"Error in async main: {e}")
         finally:
             await self._cleanup_components()
 
@@ -177,7 +177,6 @@ class VapiVoiceAssistantNode(Node):
                 port=self.get_parameter("device.port").value,
                 password=self.get_parameter("device.password").value,
                 encryption_key=self.get_parameter("device.encryption_key").value,
-                name=self.get_parameter("device.name").value,
             )
 
             self._esphome_client = ESPHomeClientWrapper(device_info)
@@ -192,7 +191,7 @@ class VapiVoiceAssistantNode(Node):
                 await self._start_vapi_call()
 
         except Exception as e:
-            self.get_logger().error(f"Failed to initialize components: {e}", exc_info=True)
+            self.get_logger().error(f"Failed to initialize components: {e}")
             raise
 
     async def _start_vapi_call(self) -> None:
@@ -215,7 +214,7 @@ class VapiVoiceAssistantNode(Node):
             self._publish_event("call_started", {"call_id": call_id})
 
         except Exception as e:
-            self.get_logger().error(f"Failed to start VAPI call: {e}", exc_info=True)
+            self.get_logger().error(f"Failed to start VAPI call: {e}")
 
     async def _stop_vapi_call(self) -> None:
         """Stop the current VAPI call."""
@@ -230,7 +229,7 @@ class VapiVoiceAssistantNode(Node):
                 self._publish_event("call_stopped", {})
 
         except Exception as e:
-            self.get_logger().error(f"Failed to stop VAPI call: {e}", exc_info=True)
+            self.get_logger().error(f"Failed to stop VAPI call: {e}")
 
     async def _on_esphome_audio(self, audio_data: bytes) -> None:
         """
@@ -296,10 +295,14 @@ class VapiVoiceAssistantNode(Node):
             data: Event data
         """
         try:
+            import json
+            
             msg = VoiceEventMsg()
             msg.event_type = event_type
+            msg.message = f"{event_type} event occurred"
             msg.timestamp = self.get_clock().now().to_msg()
-            # Note: VoiceEventMsg might need a data field - adjust based on actual message definition
+            msg.priority = VoiceEventMsg.PRIORITY_INFO
+            msg.event_data = json.dumps(data) if data else ""
             self._event_publisher.publish(msg)
 
         except Exception as e:
@@ -309,8 +312,10 @@ class VapiVoiceAssistantNode(Node):
         """Timer callback for publishing status."""
         try:
             msg = AssistantStateMsg()
-            msg.timestamp = self.get_clock().now().to_msg()
-            msg.state = "active" if self._call_active else "idle"
+            msg.current_state = "active" if self._call_active else "idle"
+            msg.previous_state = ""
+            msg.transition_time = self.get_clock().now().to_msg()
+            msg.state_data = ""
             self._state_publisher.publish(msg)
 
         except Exception as e:
@@ -329,7 +334,7 @@ class VapiVoiceAssistantNode(Node):
                 await self._esphome_client.disconnect()
 
         except Exception as e:
-            self.get_logger().error(f"Error during cleanup: {e}", exc_info=True)
+            self.get_logger().error(f"Error during cleanup: {e}")
 
     def destroy_node(self) -> None:
         """Cleanup and destroy the node."""
