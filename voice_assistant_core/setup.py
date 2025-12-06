@@ -14,31 +14,18 @@ setup(
         ("share/" + package_name + "/config", glob("config/*.yaml")),
         ("share/" + package_name + "/scripts", glob("scripts/*.sh")),
     ],
-    package_data={
-        package_name: [
-            "detection/*.onnx",
-        ],
-    },
     install_requires=[
         "setuptools",
         "aioesphomeapi>=20.0.0",
-        "numpy>=1.21.0",
         "vapi_python>=0.1.9",
     ],
     zip_safe=True,
     maintainer="astra",
     maintainer_email="astra@todo.todo",
-    description="Core brain package for ROS2 voice assistant system with ESPHome integration",
+    description="VAPI voice assistant integration for ROS2 with ESPHome",
     license="Apache-2.0",
-    extras_require={
-        "test": [
-            "pytest",
-            "pytest-asyncio",
-        ],
-    },
     entry_points={
         "console_scripts": [
-            "voice_assistant_core = voice_assistant_core.voice_assistant_node:main",
             "vapi_voice_assistant = voice_assistant_core.vapi_voice_assistant_node:main",
         ],
     },

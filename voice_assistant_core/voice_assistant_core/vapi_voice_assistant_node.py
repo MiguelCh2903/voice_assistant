@@ -16,11 +16,7 @@ import rclpy
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-
-from voice_assistant_msgs.msg import (
-    AssistantState as AssistantStateMsg,
-    VoiceEvent as VoiceEventMsg,
-)
+from std_msgs.msg import String
 
 from .audio.types import ESPHomeDeviceInfo
 from .communication import ESPHomeClientWrapper
@@ -105,11 +101,11 @@ class VapiVoiceAssistantNode(Node):
     def _setup_publishers(self) -> None:
         """Setup ROS2 publishers."""
         self._state_publisher = self.create_publisher(
-            AssistantStateMsg, "assistant_state", 1
+            String, "assistant_state", 1
         )
 
         self._event_publisher = self.create_publisher(
-            VoiceEventMsg, "voice_event", 5
+            String, "voice_event", 5
         )
 
     def _setup_timers(self) -> None:
@@ -297,12 +293,14 @@ class VapiVoiceAssistantNode(Node):
         try:
             import json
             
-            msg = VoiceEventMsg()
-            msg.event_type = event_type
-            msg.message = f"{event_type} event occurred"
-            msg.timestamp = self.get_clock().now().to_msg()
-            msg.priority = VoiceEventMsg.PRIORITY_INFO
-            msg.event_data = json.dumps(data) if data else ""
+            event_msg = {
+                "event_type": event_type,
+                "timestamp": self.get_clock().now().seconds_nanoseconds()[0],
+                "data": data
+            }
+            
+            msg = String()
+            msg.data = json.dumps(event_msg)
             self._event_publisher.publish(msg)
 
         except Exception as e:
@@ -311,11 +309,9 @@ class VapiVoiceAssistantNode(Node):
     def _status_timer_callback(self) -> None:
         """Timer callback for publishing status."""
         try:
-            msg = AssistantStateMsg()
-            msg.current_state = "active" if self._call_active else "idle"
-            msg.previous_state = ""
-            msg.transition_time = self.get_clock().now().to_msg()
-            msg.state_data = ""
+            state = "active" if self._call_active else "idle"
+            msg = String()
+            msg.data = state
             self._state_publisher.publish(msg)
 
         except Exception as e:

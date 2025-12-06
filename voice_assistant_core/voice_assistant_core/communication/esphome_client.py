@@ -25,11 +25,11 @@ from ..audio.types import (
     ConnectionState,
     ESPHomeDeviceInfo,
 )
-from ..constants import (
-    CONNECTION_TIMEOUT_SEC,
-    HEARTBEAT_INTERVAL_SEC,
-    INITIAL_RECONNECT_DELAY_SEC,
-)
+
+# Connection constants
+CONNECTION_TIMEOUT_SEC = 15.0
+HEARTBEAT_INTERVAL_SEC = 30.0
+INITIAL_RECONNECT_DELAY_SEC = 1.0
 
 
 class ESPHomeConnectionError(Exception):

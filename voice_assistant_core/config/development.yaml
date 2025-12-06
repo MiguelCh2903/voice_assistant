@@ -1,5 +1,4 @@
-# ROS2 Voice Assistant Core - Development Configuration with VAPI
-# This configuration is optimized for VAPI integration
+# ROS2 Voice Assistant Core - VAPI Configuration
 # 
 # Environment Variables (loaded from ~/.env):
 #   - ESPHOME_HOST: ESPHome device IP address
@@ -9,45 +8,32 @@
 #   - VAPI_API_KEY: VAPI API key
 #   - VAPI_ASSISTANT_ID: VAPI assistant ID
 #
-voice_assistant_core:
+vapi_voice_assistant:
   ros__parameters:
     # VAPI configuration
     vapi:
-      api_key: "$(env VAPI_API_KEY)"                       # VAPI API key (from .env)
-      api_url: "https://api.vapi.ai"                       # VAPI API URL
-      assistant_id: "$(env VAPI_ASSISTANT_ID)"             # VAPI assistant ID (from .env)
-      auto_start_call: true                                # Auto-start call on node startup
+      api_key: "$(env VAPI_API_KEY)"
+      api_url: "https://api.vapi.ai"
+      assistant_id: "$(env VAPI_ASSISTANT_ID)"
+      auto_start_call: true
       
-    # ESPHome device connection settings (use environment variables)
+    # ESPHome device connection settings
     device:
-      host: "$(env ESPHOME_HOST 192.168.1.71)"              # ESPHome device IP address
-      port: $(env ESPHOME_PORT 6053)                         # ESPHome native API port
-      password: "$(env ESPHOME_PASSWORD)"                    # ESPHome API password (if required)
-      encryption_key: "$(env ESPHOME_ENCRYPTION_KEY)"        # ESPHome encryption key (from .env)
-      name: "Dev Voice Assistant"                            # Human-readable device name
-      
-    # Connection management and reliability
-    connection:
-      timeout: 15.0                                         # Connection timeout in seconds
-      heartbeat_interval: 30.0                             # Heartbeat interval for connection health
-      auto_reconnect: true                                 # Enable automatic reconnection
-      max_reconnect_attempts: 0                           # 0 = infinite reconnection attempts
-      reconnect_delay_base: 1.0                           # Base delay between reconnection attempts
-      reconnect_delay_max: 60.0                           # Maximum delay between attempts
+      host: "$(env ESPHOME_HOST 192.168.1.71)"
+      port: $(env ESPHOME_PORT 6053)
+      password: "$(env ESPHOME_PASSWORD)"
+      encryption_key: "$(env ESPHOME_ENCRYPTION_KEY)"
+      name: "Voice Assistant"
       
     # Audio processing configuration
     audio:
-      sample_rate: 16000                                   # Audio sample rate (Hz) - standard for voice
-      sample_width: 16                                     # Bits per sample - 16-bit PCM
-      channels: 1                                          # Audio channels - mono for voice processing
-      max_duration: 30.0                                   # Maximum audio stream duration (seconds)
-      buffer_size: 1048576                                 # Audio buffer size (1MB) for ROS2 compatibility
-      chunk_size: 2048                                     # Audio chunk size for streaming (bytes)
-      log_level: "INFO"                                    # Audio buffer logging level (INFO/WARNING)
+      sample_rate: 16000
+      sample_width: 16
+      channels: 1
       
-    # ROS2 integration settings
-    ros2:
-      use_typed_messages: false                            # Enable voice_assistant_msgs (set true when available)
+    # Debug settings
+    debug:
+      log_level: "INFO"
       qos_audio_depth: 10                                  # QoS queue depth for audio topics
       qos_state_depth: 1                                   # QoS queue depth for state topics  
       qos_events_depth: 5                                  # QoS queue depth for event topics
